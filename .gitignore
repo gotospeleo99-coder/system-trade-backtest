@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 # This file is used to ignore files which are generated
 # ----------------------------------------------------------------------------
 
@@ -80,3 +81,46 @@ CMakeLists.txt.user*
 .rcc/
 .uic/
 /build*/
+=======
+# Prerequisites
+*.d
+
+# Compiled Object files
+*.slo
+*.lo
+*.o
+*.obj
+
+# Precompiled Headers
+*.gch
+*.pch
+
+# Linker files
+*.ilk
+
+# Debugger Files
+*.pdb
+
+# Compiled Dynamic libraries
+*.so
+*.dylib
+*.dll
+
+# Fortran module files
+*.mod
+*.smod
+
+# Compiled Static libraries
+*.lai
+*.la
+*.a
+*.lib
+
+# Executables
+*.exe
+*.out
+*.app
+
+# debug information files
+*.dwo
+>>>>>>> bba6c581e6eda9225f013af95d2d96c2f3a008bd
