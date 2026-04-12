@@ -22,4 +22,5 @@ void binaryDBwindow::onTestButtonClicked()
     } else {
         qDebug() << "ExportTickerBinary 失敗 result:" << result;
     }
+    binaryDB::firstExportPricedataBinary();
 }

@@ -6,8 +6,8 @@
 #include <vector>
 #include <string>
 #include <iostream>
-#include <iostream>
 #include <QDebug>
+#include <unordered_map>
 
 int binaryDB::ExportTickerBinary(){//銘柄確認
     std::vector<StockCodeID> stockCode;
@@ -30,11 +30,57 @@ int binaryDB::ExportTickerBinary(){//銘柄確認
     return 0;
 };
 
-int binaryDB::firstExportPricedataBinary(){//CSVファイルを入れたうえで行う初回バイナリー化
+int binaryDB::firstExportPricedataBinary(){//価格情報CSVファイルを入れたうえで行う初回バイナリ化
     std::vector<std::vector<OHLCetc>> Pricedate;
     std::filesystem::path csvroot = std::filesystem::path(QCoreApplication::applicationDirPath().toStdString())/"data"/"csv";
     std::filesystem::path binroot = std::filesystem::path(QCoreApplication::applicationDirPath().toStdString())/"data"/"bin";
 
+    std::filesystem::path latest;
+    std::filesystem::file_time_type latestTime;
+    for (const std::filesystem::directory_entry& entry : std::filesystem::directory_iterator(binroot)) {
+        const std::filesystem::path& tmppath = entry.path();
+        if (tmppath.filename().string().find("stockList_") == 0 && tmppath.extension() == ".bin") {
+            std::filesystem::file_time_type tmptime = entry.last_write_time();
+            if (latest.empty() || tmptime > latestTime) {
+                latestTime = tmptime;
+                latest = tmppath;
+            }
+        }
+    }
+
+    std::vector<StockCodeID> codeID;
+
+    if (!latest.empty()) {
+        file::loadBinary(latest, codeID);
+    }
+    latest.clear();
+
+    std::unordered_map<std::string, uint16_t> codeMap;
+    for (const StockCodeID& rec : codeID) {
+        codeMap[rec.code] = rec.id;
+    }
+
+    Pricedate.reserve(codeID.size());//外側のvectorを銘柄分確保
+    codeID.clear();        // 要素を全削除（size=0）。capacity は保持される。
+    codeID.shrink_to_fit();// capacity を減らすよう要求（多くの実装でメモリ解放される）。
+    // 上記は趣味。vector の挙動確認と技術研修目的。
+
+    for (std::vector<OHLCetc>& inner : Pricedate) {//内側を245日*10年分確保
+        inner.reserve(2450);
+    }
+
+
+    std::vector<std::filesystem::path> csvFilespath;
+    for (const std::filesystem::directory_entry& entry : std::filesystem::recursive_directory_iterator(csvroot)) {
+        const std::filesystem::path& p = entry.path();
+        if (p.extension() == ".csv" && p.filename().string().find("equities_bars_daily_") == 0) {
+            csvFilespath.push_back(p);
+        }
+    }
+    std::sort(csvFilespath.begin(), csvFilespath.end());
+    for(const std::filesystem::path p : csvFilespath){
+
+    }
 
     return 0;
 }
@@ -124,7 +170,7 @@ void List_stocks::StockCodeCheck(std::vector<StockCodeID>& stockCode,std::filesy
             }
 
         }
-        std::cerr<<"break data"<<Damageline<<std::endl;
+        if(Damageline!=0)std::cerr<<"break data"<<Damageline<<std::endl;
     }
     // auto end = std::chrono::high_resolution_clock::now();
     // auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count();
@@ -201,6 +247,22 @@ std::string GetFileDate(){
     return oss.str();
 }
 
+std::optional<OHLCetc> parseOHLC(const std::vector<std::string>& fields){
+    try {
+        OHLCetc rec;
+        rec.Open  = std::stoi(fields[2]);
+        rec.High  = std::stoi(fields[3]);
+        rec.Low   = std::stoi(fields[4]);
+        rec.Close = std::stoi(fields[5]);
+        rec.UL    = std::stoi(fields[6]);
+        rec.LL    = std::stoi(fields[7]);
+        rec.Vo    = std::stoul(fields[8]);
+        rec.AF    = std::stod(fields[10]);
+        return rec;
+    } catch (...) {
+        return std::nullopt;
+    }
+}
 
 /*void DataLoding::CSV_DataLoader(std::span<OHLC> buffer,const std::filesystem::path& files){//staticを外すように
     int count=0;
