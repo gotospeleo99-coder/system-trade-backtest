@@ -13,6 +13,7 @@ namespace binaryDB {
 int ExportTickerBinary();
 int firstExportPricedataBinary();
 };
+
 namespace BinaryIO{
 template<typename T>
 bool SaveBinary(const std::filesystem::path& path,const std::string& filename,const std::vector<T>& data);
@@ -21,15 +22,13 @@ bool LoadBinary(const std::filesystem::path& path, std::vector<T>& records);
 };
 
 
-class file{
-public:
-
-    static std::vector<std::string> CSVparse(const std::string& line);
-    static void parseOHLC(const std::vector<std::string>& fields,const CSVpriceheader& header, OHLCetc& data,int& date);
-    static std::string GetFileDate();
-    static void StockCodeCheck(std::vector<StockCodeID>& stockCode,std::filesystem::path path);//対象コードにIDを埋め込む
-    static std::vector<std::string>ListCSVparse(const std::string& line);
-    static bool InsertPriceRecord(std::filesystem::path p,OHLCetc data, CSVpriceheader hedear,int );
+namespace file{
+    std::vector<std::string> CSVparse(const std::string& line);
+    void parseOHLC(const std::vector<std::string>& fields,const CSVpriceheader& header, OHLCetc& data,int& date);
+    std::string GetFileDate();
+    void StockCodeCheck(std::vector<StockCodeID>& stockCode,std::filesystem::path path);//対象コードにIDを埋め込む
+    std::vector<std::string>ListCSVparse(const std::string& line);
+    bool InsertPriceRecord(std::filesystem::path p,OHLCetc data, CSVpriceheader hedear,int );
 
 };
 
