@@ -17,10 +17,10 @@ struct StockCodeID{
     uint16_t id;
 }__attribute__((packed));
 struct CSVpriceheader {
-    short Open=-1, High=-1, Low=-1, Close=-1;
-    short UL=-1, LL=-1, Vo=-1, AF=-1;
+    short Open=-1, High=-1, Low=-1, Close=-1,date = -1;
+    short UL=-1, LL=-1, Vo=-1, AF=-1,code = -1;
 
-    static constexpr size_t count = 8;
+    static constexpr size_t count = 9;
 };
 #endif // STRUCT_UTIL_H
 
