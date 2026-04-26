@@ -30,7 +30,9 @@ int binaryDB::ExportTickerBinary(){//銘柄確認
 };
 
 int binaryDB::firstExportPricedataBinary(){//価格情報CSVファイルを入れたうえで行う初回バイナリ化
+    auto start = std::chrono::high_resolution_clock::now();
     std::vector<std::vector<OHLCetc>> Pricedate;
+    std::vector<int> timeline;
     std::filesystem::path csvroot = std::filesystem::path(QCoreApplication::applicationDirPath().toStdString())/"data"/"csv";
     std::filesystem::path binroot = std::filesystem::path(QCoreApplication::applicationDirPath().toStdString())/"data"/"bin";
 
@@ -80,6 +82,10 @@ int binaryDB::firstExportPricedataBinary(){//価格情報CSVファイルを入�
     for(const std::filesystem::path& p : csvFilespath){
 
         std::ifstream ifs(p);
+        if (!ifs) {
+            std::cerr << "file open failed: " << p << std::endl;
+            continue;
+        }
         std::string line;
         std::getline(ifs, line);
 
@@ -87,7 +93,7 @@ int binaryDB::firstExportPricedataBinary(){//価格情報CSVファイルを入�
         std::string code;
         CSVpriceheader hederstruct;
         for(int i = 0;i<header.size();i++){
-            if     (header[i] =="date")      hederstruct.date=i;
+            if     (header[i] =="Date")      hederstruct.date=i;
             else if(header[i]=="Code")       hederstruct.code =i;
             else if(header[i] == "O")        hederstruct.Open = i;
             else if(header[i] == "H")        hederstruct.High = i;
@@ -95,23 +101,64 @@ int binaryDB::firstExportPricedataBinary(){//価格情報CSVファイルを入�
             else if(header[i] == "C")        hederstruct.Close = i;
             else if(header[i] == "UL")       hederstruct.UL = i;
             else if(header[i] == "LL")       hederstruct.LL = i;
+            else if(header[i] == "Vo")       hederstruct.Vo = i;
             else if(header[i] == "AdjFactor")hederstruct.AF = i;
         }
         if(hederstruct.Open == -1||hederstruct.High == -1
             ||hederstruct.Low == -1||hederstruct.Close == -1
             ||hederstruct.UL == -1||hederstruct.LL == -1
-            ||hederstruct.AF ==-1 ){
+            ||hederstruct.AF ==-1 ||hederstruct.code == -1
+            ||hederstruct.date ==-1){
             std::cerr<<p<<"のO,H,L,C,UL,LL,AdjFactorのいずれかのヘッダー情報が抜け落ちていますCSVファイルを確認してください"<<std::endl;
             return 1;
         }
-        while (std::getline(ifs, line)){
 
+        std::string datecomparison;//日付比較用//
+
+        while (std::getline(ifs, line)){
+        std::vector<std::string> tmpdata=file::ListCSVparse(line);
+
+        std::unordered_map<std::string, uint16_t>::const_iterator it = codeMap.find(tmpdata[hederstruct.code]);
+
+        if (it == codeMap.end()) continue;
+
+        if(datecomparison != tmpdata[hederstruct.date]){
+            std::string dateStr = tmpdata[hederstruct.date];
+            dateStr.erase(std::remove(dateStr.begin(), dateStr.end(), '-'), dateStr.end());
+            timeline.push_back(std::stoi(dateStr));
         }
 
+        uint16_t id = it->second;
+        if (tmpdata.size() < CSVpriceheader::count) tmpdata.resize(CSVpriceheader::count);
+
+        OHLCetc tmplinedata;
+        file::parseOHLC(tmpdata,hederstruct,tmplinedata);
+        Pricedate[id].push_back(tmplinedata);
+        }
+        // for (size_t i = 0; i < Pricedate.size(); ++i) {
+        //     qDebug() << "=== Stock Index:" << i << " ===";
+
+        //     for (size_t j = 0; j < Pricedate[i].size(); ++j) {
+        //         const OHLCetc& d = Pricedate[i][j];
+
+        //         qDebug().nospace()
+        //             << "Day[" << j << "] "
+        //             << "O:" << d.Open  / (float)OHLCetc::PRICE_SCALE << " "
+        //             << "H:" << d.High  / (float)OHLCetc::PRICE_SCALE << " "
+        //             << "L:" << d.Low   / (float)OHLCetc::PRICE_SCALE << " "
+        //             << "C:" << d.Close / (float)OHLCetc::PRICE_SCALE << " "
+        //             << "UL:" << d.UL   / (float)OHLCetc::PRICE_SCALE << " "
+        //             << "LL:" << d.LL   / (float)OHLCetc::PRICE_SCALE << " "
+        //             << "Vo:" << d.Vo
+        //             << " AF:" << d.AF;
+        //     }
+        // }
     }
+    auto end = std::chrono::high_resolution_clock::now();
+    auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count();
+    qDebug() << "処理時間:" << ms << "ms";
     return 0;
 };
-
 
 void file::StockCodeCheck(std::vector<StockCodeID>& stockCode,std::filesystem::path path){//銘柄コードに対応したindexにIDを埋め込む。　　正常動作確認
     std::filesystem::path Latestfile;
@@ -264,15 +311,20 @@ std::string file::GetFileDate(){
     return oss.str();
 }
 
-void parseOHLC(const std::vector<std::string>& fields, const CSVpriceheader& header, OHLCetc& data){
-    if(fields.size() != CSVpriceheader::count) return;
-    data.Open  = fields[header.Open ].empty() ? 0 : std::stod (fields[header.Open ]) * OHLCetc::PRICE_SCALE;
-    data.High  = fields[header.High ].empty() ? 0 : std::stod (fields[header.High ]) * OHLCetc::PRICE_SCALE;
-    data.Low   = fields[header.Low  ].empty() ? 0 : std::stod (fields[header.Low  ]) * OHLCetc::PRICE_SCALE;
-    data.Close = fields[header.Close].empty() ? 0 : std::stod (fields[header.Close]) * OHLCetc::PRICE_SCALE;
-    data.UL    = fields[header.UL   ].empty() ? 0 : std::stod (fields[header.UL   ]) * OHLCetc::PRICE_SCALE;
-    data.LL    = fields[header.LL   ].empty() ? 0 : std::stod (fields[header.LL   ]) * OHLCetc::PRICE_SCALE;
-    data.Vo    = fields[header.Vo   ].empty() ? 0 : std::stoul(fields[header.Vo  ]);
-    data.AF    = fields[header.AF   ].empty() ? 0 : std::stof (fields[header.AF   ]);
+bool file::parseOHLC(const std::vector<std::string>& fields, const CSVpriceheader& header, OHLCetc& data){
+    if(fields.size() != CSVpriceheader::count) return true;
+    try{
+        data.Open  = fields[header.Open ].empty() ? 0 : std::stod (fields[header.Open ]) * OHLCetc::PRICE_SCALE;
+        data.High  = fields[header.High ].empty() ? 0 : std::stod (fields[header.High ]) * OHLCetc::PRICE_SCALE;
+        data.Low   = fields[header.Low  ].empty() ? 0 : std::stod (fields[header.Low  ]) * OHLCetc::PRICE_SCALE;
+        data.Close = fields[header.Close].empty() ? 0 : std::stod (fields[header.Close]) * OHLCetc::PRICE_SCALE;
+        data.UL    = fields[header.UL   ].empty() ? 0 : std::stod (fields[header.UL   ]) * OHLCetc::PRICE_SCALE;
+        data.LL    = fields[header.LL   ].empty() ? 0 : std::stod (fields[header.LL   ]) * OHLCetc::PRICE_SCALE;
+        data.Vo    = fields[header.Vo   ].empty() ? 0 : std::stoul(fields[header.Vo   ]);
+        data.AF    = fields[header.AF   ].empty() ? 0 : std::stof (fields[header.AF   ]);
+    } catch(...){
+        return false;
+    }
+    return true;
 }
 

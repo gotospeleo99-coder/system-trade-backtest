@@ -29,7 +29,8 @@ namespace file{
     void StockCodeCheck(std::vector<StockCodeID>& stockCode,std::filesystem::path path);//対象コードにIDを埋め込む
     std::vector<std::string>ListCSVparse(const std::string& line);
     bool InsertPriceRecord(std::filesystem::path p,OHLCetc data, CSVpriceheader hedear,int );
-
+    bool parseOHLC(const std::vector<std::string>& fields, const CSVpriceheader& header, OHLCetc& data);
+    inline const std::string& safe_field(const std::vector<std::string>& v, int idx);
 };
 
 

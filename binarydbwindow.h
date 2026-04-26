@@ -21,6 +21,7 @@ private:
     Ui::binarydbwindow *ui;
 private slots:
     void onTestButtonClicked();
+    void onsecondButtonClicked();
 };
 
 #endif // BINARYDBWINDOW_H
