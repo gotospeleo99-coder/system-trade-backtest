@@ -24,7 +24,7 @@ void binaryDBwindow::onTestButtonClicked()
     } else {
         qDebug() << "ExportTickerBinary 失敗 result:" << result;
     }
-    binaryDB::firstExportPricedataBinary();
+
 }
 
 void binaryDBwindow::onsecondButtonClicked()
@@ -35,5 +35,4 @@ void binaryDBwindow::onsecondButtonClicked()
     } else {
         qDebug() << "firstExportPricedataBinary 失敗 result:" << result;
     }
-    binaryDB::firstExportPricedataBinary();
 }
