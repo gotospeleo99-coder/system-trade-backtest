@@ -13,6 +13,7 @@
 #include <QStringConverter>
 
 int binaryDB::ExportTickerBinary(){//銘柄確認
+
     std::vector<StockCodeID> stockCode;
     std::filesystem::path csvroot = std::filesystem::path(QCoreApplication::applicationDirPath().toStdString())/"data"/"csv";
     std::filesystem::path binroot = std::filesystem::path(QCoreApplication::applicationDirPath().toStdString())/"data"/"bin";
@@ -38,7 +39,7 @@ int binaryDB::ExportTickerBinary(){//銘柄確認
 
 int binaryDB::firstExportPricedataBinary(){//価格情報CSVファイルを入れたうえで行う初回バイナリ化
     auto start = std::chrono::high_resolution_clock::now();
-
+//対象ファイルと同名ディレクトリで探査を終了しないように後々改善をする
 
     std::vector<std::vector<OHLCetc>> Pricedate;
     std::vector<int> timeline;
@@ -64,13 +65,13 @@ int binaryDB::firstExportPricedataBinary(){//価格情報CSVファイルを入�
     }
     latest.clear();
 
-    qDebug()<<codeID.size();
+
 
     std::unordered_map<std::string, uint16_t> codeMap;
     for (const StockCodeID& rec : codeID) {
         codeMap[rec.code] = rec.id;
     }
-
+    qDebug()<<codeID[0].code;
     Pricedate.resize(codeID.size());//外側のvectorを銘柄分確保
     codeID.clear();        // 要素を全削除（size=0）。capacity は保持される。
     codeID.shrink_to_fit();// capacity を減らすよう要求（多くの実装でメモリ解放される）。
@@ -103,7 +104,7 @@ int binaryDB::firstExportPricedataBinary(){//価格情報CSVファイルを入�
         line.reserve(256);
         std::getline(ifs, line);
 
-        std::vector<std::string> header = file::ListCSVparse(line);
+       std::vector<std::string_view> header = file::ListCSVparse(line);
         std::string code;
         CSVpriceheader hederstruct;
         for(int i = 0;i<header.size();i++){
@@ -113,8 +114,6 @@ int binaryDB::firstExportPricedataBinary(){//価格情報CSVファイルを入�
             else if(header[i] == "H")        hederstruct.High = i;
             else if(header[i] == "L")        hederstruct.Low = i;
             else if(header[i] == "C")        hederstruct.Close = i;
-            else if(header[i] == "UL")       hederstruct.UL = i;
-            else if(header[i] == "LL")       hederstruct.LL = i;
             else if(header[i] == "Vo")       hederstruct.Vo = i;
             else if(header[i] == "AdjFactor")hederstruct.AF = i;
         }
@@ -129,7 +128,7 @@ int binaryDB::firstExportPricedataBinary(){//価格情報CSVファイルを入�
 
         std::string datecomparison;//日付比較用//
 
-        std::vector<std::string> tmpdata;
+        std::vector<std::string_view> tmpdata;
 
         while (std::getline(ifs, line)){
         tmpdata.clear();
@@ -140,12 +139,13 @@ int binaryDB::firstExportPricedataBinary(){//価格情報CSVファイルを入�
                 return 1;
             }
 
-        std::unordered_map<std::string, uint16_t>::const_iterator it = codeMap.find(tmpdata[hederstruct.code]);
+            std::unordered_map<std::string, uint16_t>::const_iterator it =
+                codeMap.find(std::string(tmpdata[hederstruct.code]));
 
         if (it == codeMap.end()) continue;
 
         if(datecomparison != tmpdata[hederstruct.date]){
-            std::string dateStr = tmpdata[hederstruct.date];
+            std::string dateStr(tmpdata[hederstruct.date]);
             dateStr.erase(std::remove(dateStr.begin(), dateStr.end(), '-'), dateStr.end());
             timeline.push_back(std::stoi(dateStr));
             datecomparison = tmpdata[hederstruct.date];
@@ -155,14 +155,31 @@ int binaryDB::firstExportPricedataBinary(){//価格情報CSVファイルを入�
         if (tmpdata.size() < CSVpriceheader::count) tmpdata.resize(CSVpriceheader::count);
 
         OHLCetc tmplinedata;
-        file::parseOHLC(tmpdata,hederstruct,tmplinedata);
+        file::parseOHLC(tmpdata, hederstruct, tmplinedata);
         Pricedate[id].push_back(tmplinedata);
         }
     }
     auto end = std::chrono::high_resolution_clock::now();
-    qDebug() << timeline.size();
-    for (size_t i = 0; i < timeline.size(); ++i) {
-        qDebug() << "day[" << i << "]" << timeline[i];
+    qDebug() << "===== sample stock =====";
+
+    qDebug() << "==========";
+    qDebug() << "stock index = 0";
+    qDebug() << "data size =" << Pricedate[0].size();
+
+    for (size_t dayIdx = 0;
+         dayIdx < Pricedate[0].size();
+         ++dayIdx) {
+
+        const OHLCetc& d = Pricedate[0][dayIdx];
+
+        qDebug()
+            << "day =" << dayIdx
+            << "O ="  << d.Open
+            << "H ="  << d.High
+            << "L ="  << d.Low
+            << "C ="  << d.Close
+            << "Vo =" << d.Vo
+            << "AF =" << d.AF;
     }
     auto ms_prep = std::chrono::duration_cast<std::chrono::milliseconds>(mid - start).count();
     auto ms_parse = std::chrono::duration_cast<std::chrono::milliseconds>(end - mid).count();
@@ -172,18 +189,6 @@ int binaryDB::firstExportPricedataBinary(){//価格情報CSVファイルを入�
     qDebug() << "CSV読み込み・解析時間(whileループ):" << ms_parse << "ms";
     qDebug() << "合計処理時間:" << ms_total << "ms";
     qDebug() << "codeMap size:" << codeMap.size();
-    /*qDebug() << "Pricedate[0] size:" << Pricedate[0].size();
-    if (!Pricedate[0].empty()) {
-        const OHLCetc& d = Pricedate[0][0];
-        qDebug() << "O:"  << d.Open  / (float)OHLCetc::PRICE_SCALE;
-        qDebug() << "H:"  << d.High  / (float)OHLCetc::PRICE_SCALE;
-        qDebug() << "L:"  << d.Low   / (float)OHLCetc::PRICE_SCALE;
-        qDebug() << "C:"  << d.Close / (float)OHLCetc::PRICE_SCALE;
-        qDebug() << "UL:" << d.UL    / (float)OHLCetc::PRICE_SCALE;
-        qDebug() << "LL:" << d.LL    / (float)OHLCetc::PRICE_SCALE;
-        qDebug() << "Vo:" << d.Vo;
-        qDebug() << "AF:" << d.AF;
-    }*/
 
     return 0;
 };
@@ -195,7 +200,7 @@ int file::StockCodeCheck(std::vector<StockCodeID>& stockCode,std::filesystem::pa
     if (!std::filesystem::exists(path) || !std::filesystem::is_directory(path)) return 1;
 
     std::regex target(R"(equities_master_(\d{6}(\d{2})?)\.csv)");//ファイル名の正規表現日数が8か6かはファイルによる
-
+    //対象ファイルと同名ディレクトリで探査を終了しないように後々改善をする
     for(const std::filesystem::directory_entry& entry: std::filesystem::recursive_directory_iterator(path)) {
         std::string filename = entry.path().filename().string();
         std::smatch match;
@@ -225,7 +230,7 @@ int file::StockCodeCheck(std::vector<StockCodeID>& stockCode,std::filesystem::pa
 
         std::string line;
         std::getline(ifs, line);
-        std::vector<std::string> header = file::ListCSVparse(line);
+        std::vector<std::string_view> header = file::ListCSVparse(line);
         int code= -1 ,Mkt = -1;
         int Damageline = 0;
         for(int i = 0 ; i<header.size();i++){//CSVのヘッダー情報の入手
@@ -240,7 +245,7 @@ int file::StockCodeCheck(std::vector<StockCodeID>& stockCode,std::filesystem::pa
             qDebug()<<header[i];
         }
         while (std::getline(ifs, line)) {//CSVの本文のパース
-            std::vector<std::string> row = file::ListCSVparse(line);
+            std::vector<std::string_view> row = file::ListCSVparse(line);
             for(int i = 0;i<row.size();i++){
                 qDebug()<<"row["<<i<<"]"<<row[i];
             }
@@ -253,9 +258,9 @@ int file::StockCodeCheck(std::vector<StockCodeID>& stockCode,std::filesystem::pa
                 Damageline++;
                 continue;
             }
-            if( targetMkt.count(std::stoi(row[Mkt]))){
+            if( targetMkt.count(std::stoi(std::string(row[Mkt])))){
                 StockCodeID tmp;
-                memcpy(tmp.code, row[code].c_str(), 5);
+                memcpy(tmp.code, row[code].data(), 5);
                 tmp.code[5] = '\0';
                 tmp.id = id++;
                 stockCode.push_back(tmp);
@@ -270,26 +275,29 @@ int file::StockCodeCheck(std::vector<StockCodeID>& stockCode,std::filesystem::pa
     return 0;
 };
 
-std::vector<std::string> file::ListCSVparse(const std::string& line){
-
-    std::vector<std::string> linedata;
+std::vector<std::string_view> file::ListCSVparse(const std::string& line){
+    std::vector<std::string_view> linedata;
     linedata.reserve(13);
-    size_t pos= 0 ;
 
-    while(pos<line.size()){
-        if(line[pos] =='"'){
-            size_t last =line.find('"',pos+1);
-            if(last == std::string::npos) throw std::runtime_error("不正なCSV: 閉じ\"がない");
-            linedata.push_back(line.substr(pos +1,last-pos-1));
-            pos = last+2;
+    size_t pos = 0;
+
+    while(pos < line.size()){
+        if(line[pos] == '"'){
+            size_t last = line.find('"', pos + 1);
+            if(last == std::string::npos){
+                throw std::runtime_error("不正なCSV");
+            }
+            linedata.emplace_back(line.data() + pos + 1, last - pos - 1);
+            pos = last + 2;
         }
         else{
-            size_t last =line.find(',',pos);
-            if (last == std::string::npos) last = line.size();
-            linedata.push_back(line.substr(pos,last-pos));
-            pos = last+1;
+            size_t last = line.find(',', pos);
+            if(last == std::string::npos){
+                last = line.size();
+            }
+            linedata.emplace_back(line.data() + pos, last - pos);
+            pos = last + 1;
         }
-
     }
     return linedata;
 }
@@ -352,20 +360,30 @@ std::string file::GetFileDate(){
     return oss.str();
 }
 
-bool file::parseOHLC(const std::vector<std::string>& fields, const CSVpriceheader& header, OHLCetc& data){
+bool file::parseOHLC(const std::vector<std::string_view>& fields, const CSVpriceheader& header, OHLCetc& data){
     if(fields.size() != CSVpriceheader::count) return true;
-    try{
-        data.Open  = fields[header.Open ].empty() ? 0 : std::stod (fields[header.Open ]) * OHLCetc::PRICE_SCALE;
-        data.High  = fields[header.High ].empty() ? 0 : std::stod (fields[header.High ]) * OHLCetc::PRICE_SCALE;
-        data.Low   = fields[header.Low  ].empty() ? 0 : std::stod (fields[header.Low  ]) * OHLCetc::PRICE_SCALE;
-        data.Close = fields[header.Close].empty() ? 0 : std::stod (fields[header.Close]) * OHLCetc::PRICE_SCALE;
-        data.UL    = fields[header.UL   ].empty() ? 0 : std::stod (fields[header.UL   ]) * OHLCetc::PRICE_SCALE;
-        data.LL    = fields[header.LL   ].empty() ? 0 : std::stod (fields[header.LL   ]) * OHLCetc::PRICE_SCALE;
-        data.Vo    = fields[header.Vo   ].empty() ? 0 : std::stoul(fields[header.Vo   ]);
-        data.AF    = fields[header.AF   ].empty() ? 0 : std::stof (fields[header.AF   ]);
-    } catch(...){
-        return false;
-    }
+    data.Open  = fields[header.Open ].empty() ? 0 : conversion::NumericalconversionInt(fields[header.Open ]);
+    data.High  = fields[header.High ].empty() ? 0 : conversion::NumericalconversionInt(fields[header.High ]);
+    data.Low   = fields[header.Low  ].empty() ? 0 : conversion::NumericalconversionInt(fields[header.Low  ]);
+    data.Close = fields[header.Close].empty() ? 0 : conversion::NumericalconversionInt(fields[header.Close]);
+    // data.UL    = fields[header.UL   ].empty() ? 0 : conversion::NumericalconversionInt(fields[header.UL   ]);
+    // data.LL    = fields[header.LL   ].empty() ? 0 : conversion::NumericalconversionInt(fields[header.LL   ]);
+    data.Vo    = fields[header.Vo   ].empty() ? 0 : conversion::NumericalconversionInt(fields[header.Vo   ]);
+    data.AF    = fields[header.AF   ].empty() ? 0 : std::stof(std::string(fields[header.AF]));
     return true;
+}
+
+int conversion::NumericalconversionInt(const std::string_view line){//関数名とnamespace含めたら長い名前の変更は検討しよう（コードが若干読みにくい以外の実害はない）//
+    int value = 0;
+    bool Periodjudgment=false;
+    for(char tmp:line){
+        if(tmp=='.'){
+            Periodjudgment =true;
+            continue;
+        }
+        value = value * 10+(tmp-'0');
+    }
+    if(!Periodjudgment)value*=10;
+    return value;
 }
 

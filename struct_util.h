@@ -6,7 +6,7 @@
 // バイナリ用構造体
 // ---------------------------------------------------------------------
 struct OHLCetc{//データは10倍して保存,表示の際などに注意
-    int32_t  Open,High,Low,Close,UL,LL;//ULLLはストップ二種
+    int32_t  Open,High,Low,Close;//,UL,LL;//ULLLはストップ二種データがないのでコメントアウト
     uint32_t Vo;//出来高
     float AF;//AdjFactor、株式分割合併
 
