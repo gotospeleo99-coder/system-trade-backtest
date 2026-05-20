@@ -28,6 +28,13 @@ namespace file{
     int StockCodeCheck(std::vector<StockCodeID>& stockCode,std::filesystem::path path);//対象コードにIDを埋め込む
    std::vector<std::string_view> ListCSVparse(const std::string& line);
     bool parseOHLC(const std::vector<std::string_view>& fields, const CSVpriceheader& header, OHLCetc& data);
+   ThreadResult PareseCSVFiles(
+       const std::vector<std::filesystem::path>& csvFilespath,
+       size_t begin,
+       size_t end,
+       const std::unordered_map<std::string,uint16_t>& codeMap,
+        size_t codeCount,
+        size_t chunkIndex);
     };
 
 namespace conversion {

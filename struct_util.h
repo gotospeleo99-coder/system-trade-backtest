@@ -2,6 +2,7 @@
 #define STRUCT_UTIL_H
 #include <cstdint>
 #include <unordered_set>
+#include <vector>
 // ---------------------------------------------------------------------
 // バイナリ用構造体
 // ---------------------------------------------------------------------
@@ -25,6 +26,11 @@ struct CSVpriceheader {
     short UL=-1, LL=-1, Vo=-1, AF=-1,code = -1,Va = -1;
 
     static constexpr size_t count = 11;
+};
+struct ThreadResult {
+    size_t fileIndex;
+    std::vector<std::vector<OHLCetc>> pricedata;
+    std::vector<int> timeline;
 };
 #endif // STRUCT_UTIL_H
 
