@@ -26,15 +26,14 @@ namespace file{
     //void ConvertAllCSVtoUTF8(const std::filesystem::path& csvroot);
     std::string GetFileDate();
     int StockCodeCheck(std::vector<StockCodeID>& stockCode,std::filesystem::path path);//対象コードにIDを埋め込む
-   std::vector<std::string_view> ListCSVparse(const std::string& line);
-    bool parseOHLC(const std::vector<std::string_view>& fields, const CSVpriceheader& header, OHLCetc& data);
-   ThreadResult PareseCSVFiles(
+    void ListCSVparse(const std::string_view& line,std::vector<std::string_view>& data);
+    OHLCetc parseOHLC(const std::vector<std::string_view>& fields, const CSVpriceheader& header);
+    ThreadResult PareseCSVFiles(
        const std::vector<std::filesystem::path>& csvFilespath,
-       size_t begin,
-       size_t end,
-       const std::unordered_map<std::string,uint16_t>& codeMap,
-        size_t codeCount,
-        size_t chunkIndex);
+       int begin,
+       int end,
+       const std::unordered_map<std::string_view,uint16_t>& codeMap,
+        int chunkIndex);
     };
 
 namespace conversion {

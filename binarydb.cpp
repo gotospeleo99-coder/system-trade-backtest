@@ -6,6 +6,7 @@
 #include <vector>
 #include <string>
 #include <iostream>
+#include <future>
 #include <QDebug>
 #include <unordered_map>
 #include <QFile>
@@ -39,10 +40,7 @@ int binaryDB::ExportTickerBinary(){//銘柄確認
 
 int binaryDB::firstExportPricedataBinary(){//価格情報CSVファイルを入れたうえで行う初回バイナリ化
     auto start = std::chrono::high_resolution_clock::now();
-//対象ファイルと同名ディレクトリで探査を終了しないように後々改善をする
-
-    std::vector<std::vector<OHLCetc>> Pricedate;
-    std::vector<int> timeline;
+    //対象ファイルと同名ディレクトリで探査を終了しないように後々改善をする
     std::filesystem::path csvroot = std::filesystem::path(QCoreApplication::applicationDirPath().toStdString())/"data"/"csv";
     std::filesystem::path binroot = std::filesystem::path(QCoreApplication::applicationDirPath().toStdString())/"data"/"bin";
 
@@ -67,20 +65,14 @@ int binaryDB::firstExportPricedataBinary(){//価格情報CSVファイルを入�
 
 
 
-    std::unordered_map<std::string, uint16_t> codeMap;
+    std::unordered_map<std::string_view, uint16_t> codeMap;
     for (const StockCodeID& rec : codeID) {
         codeMap[rec.code] = rec.id;
     }
     qDebug()<<codeID[0].code;
-    Pricedate.resize(codeID.size());//外側のvectorを銘柄分確保
     codeID.clear();        // 要素を全削除（size=0）。capacity は保持される。
     codeID.shrink_to_fit();// capacity を減らすよう要求（多くの実装でメモリ解放される）。
     // 上記は趣味。vector の挙動確認と技術研修目的。
-
-    for (std::vector<OHLCetc>& inner : Pricedate) {//内側を245日*10年分確保
-        inner.reserve(2450);
-    }
-
 
     std::vector<std::filesystem::path> csvFilespath;
     for (const std::filesystem::directory_entry& entry : std::filesystem::recursive_directory_iterator(csvroot)) {
@@ -93,29 +85,93 @@ int binaryDB::firstExportPricedataBinary(){//価格情報CSVファイルを入�
 
     auto mid = std::chrono::high_resolution_clock::now();
 
+    unsigned int cores = std::thread::hardware_concurrency();
+    if(cores>1)--cores;
+    else cores=1;
+
+    int chunkcount=0;
+    int base = csvFilespath.size() / cores;
+    int amari = csvFilespath.size() % cores-1;
+    std::vector<std::future<ThreadResult>> futures;
+    futures.reserve(cores);
+
+    size_t begin = 0;
+    for(int i = 0; i < cores; i++){
+        size_t chunk = base + (i < amari ? 1 : 0);
+        size_t end = begin + chunk;
+        futures.emplace_back(
+            std::async(std::launch::async,file::PareseCSVFiles,std::cref(csvFilespath),begin,end,std::cref(codeMap),i));
+        begin = end;
+    }
+
+    std::vector<ThreadResult> results;
+    results.reserve(cores);
+
+    for(auto& f : futures){
+        results.push_back(f.get());
+    }
+
+    std::sort(results.begin(), results.end(),
+              [](const ThreadResult& a, const ThreadResult& b){
+                  return a.fileIndex < b.fileIndex;
+              });
+
+    ThreadResult merged;
+    merged.pricedata.resize(codeMap.size());
+    merged.fileIndex=0;
+
+    for(auto& r : results){
+        // timeline
+        merged.timeline.insert(
+            merged.timeline.end(),
+            std::make_move_iterator(r.timeline.begin()),
+            std::make_move_iterator(r.timeline.end())
+            );
+
+        // 各銘柄
+        for(size_t id = 0; id < r.pricedata.size(); id++){
+            merged.pricedata[id].insert(
+                merged.pricedata[id].end(),
+                std::make_move_iterator(r.pricedata[id].begin()),
+                std::make_move_iterator(r.pricedata[id].end())
+                );
+        }
+    }
+
 
     auto end = std::chrono::high_resolution_clock::now();
     qDebug() << "===== sample stock =====";
+    qDebug() << "=== ThreadResult ===";
+    qDebug() << "fileIndex =" <<  merged.fileIndex;
 
-    qDebug() << "==========";
-    qDebug() << "stock index = 0";
-    qDebug() << "data size =" << Pricedate[0].size();
-
-    for (size_t dayIdx = 0;
-         dayIdx < Pricedate[0].size();
-         ++dayIdx) {
-
-        const OHLCetc& d = Pricedate[0][dayIdx];
-
-        qDebug()
-            << "day =" << dayIdx
-            << "O ="  << d.Open
-            << "H ="  << d.High
-            << "L ="  << d.Low
-            << "C ="  << d.Close
-            << "Vo =" << d.Vo
-            << "AF =" << d.AF;
+    qDebug() << "timeline:";
+    for (int i = 0; i <  merged.timeline.size(); i++) {
+        qDebug() << "  [" << i << "] =" <<  merged.timeline[i];
     }
+
+    qDebug() << "pricedata (銘柄数):" <<  merged.pricedata.size();
+    for (int id = 0; id <  merged.pricedata.size(); id++) {
+        const auto& vec =  merged.pricedata[id];
+        if (vec.empty()) continue; // 空ならスキップ
+
+        qDebug() << "  id:" << id << " days:" << vec.size();
+
+        for (int d = 0; d < vec.size(); d++) {
+            const auto& o = vec[d];
+            qDebug() << "    [" << d << "]"
+                     << "O:" << o.Open
+                     << "H:" << o.High
+                     << "L:" << o.Low
+                     << "C:" << o.Close
+                     << "Vo:" << o.Vo
+                     << "AF:" << o.AF;
+        }
+    }
+    qDebug() << "====================";
+
+
+    qDebug() << "stock index = 0";
+
     auto ms_prep = std::chrono::duration_cast<std::chrono::milliseconds>(mid - start).count();
     auto ms_parse = std::chrono::duration_cast<std::chrono::milliseconds>(end - mid).count();
     auto ms_total = std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count();
@@ -165,7 +221,8 @@ int file::StockCodeCheck(std::vector<StockCodeID>& stockCode,std::filesystem::pa
 
         std::string line;
         std::getline(ifs, line);
-        std::vector<std::string_view> header = file::ListCSVparse(line);
+        std::vector<std::string_view> header;
+        file::ListCSVparse(line,header);
         int code= -1 ,Mkt = -1;
         int Damageline = 0;
         for(int i = 0 ; i<header.size();i++){//CSVのヘッダー情報の入手
@@ -180,7 +237,8 @@ int file::StockCodeCheck(std::vector<StockCodeID>& stockCode,std::filesystem::pa
             qDebug()<<header[i];
         }
         while (std::getline(ifs, line)) {//CSVの本文のパース
-            std::vector<std::string_view> row = file::ListCSVparse(line);
+            std::vector<std::string_view> row;
+            file::ListCSVparse(line,row);
             for(int i = 0;i<row.size();i++){
                 qDebug()<<"row["<<i<<"]"<<row[i];
             }
@@ -210,9 +268,8 @@ int file::StockCodeCheck(std::vector<StockCodeID>& stockCode,std::filesystem::pa
     return 0;
 };
 
-std::vector<std::string_view> file::ListCSVparse(const std::string& line){
-    std::vector<std::string_view> linedata;
-    linedata.reserve(13);
+void file::ListCSVparse(const std::string_view& line,std::vector<std::string_view>& data){//dataはあらかじめ外でriserveするように確保してください
+    //findを使わない形に修正することを検討
 
     size_t pos = 0;
 
@@ -222,7 +279,7 @@ std::vector<std::string_view> file::ListCSVparse(const std::string& line){
             if(last == std::string::npos){
                 throw std::runtime_error("不正なCSV");
             }
-            linedata.emplace_back(line.data() + pos + 1, last - pos - 1);
+            data.emplace_back(line.data() + pos + 1, last - pos - 1);
             pos = last + 2;
         }
         else{
@@ -230,11 +287,10 @@ std::vector<std::string_view> file::ListCSVparse(const std::string& line){
             if(last == std::string::npos){
                 last = line.size();
             }
-            linedata.emplace_back(line.data() + pos, last - pos);
+            data.emplace_back(line.data() + pos, last - pos);
             pos = last + 1;
         }
     }
-    return linedata;
 }
 
 template<typename T>
@@ -295,8 +351,8 @@ std::string file::GetFileDate(){
     return oss.str();
 }
 
-bool file::parseOHLC(const std::vector<std::string_view>& fields, const CSVpriceheader& header, OHLCetc& data){
-    if(fields.size() != CSVpriceheader::count) return true;
+OHLCetc file::parseOHLC(const std::vector<std::string_view>& fields, const CSVpriceheader& header){
+    OHLCetc data;
     data.Open  = fields[header.Open ].empty() ? 0 : conversion::NumericalconversionInt(fields[header.Open ]);
     data.High  = fields[header.High ].empty() ? 0 : conversion::NumericalconversionInt(fields[header.High ]);
     data.Low   = fields[header.Low  ].empty() ? 0 : conversion::NumericalconversionInt(fields[header.Low  ]);
@@ -305,7 +361,7 @@ bool file::parseOHLC(const std::vector<std::string_view>& fields, const CSVprice
     // data.LL    = fields[header.LL   ].empty() ? 0 : conversion::NumericalconversionInt(fields[header.LL   ]);
     data.Vo    = fields[header.Vo   ].empty() ? 0 : conversion::NumericalconversionInt(fields[header.Vo   ]);
     data.AF    = fields[header.AF   ].empty() ? 0 : std::stof(std::string(fields[header.AF]));
-    return true;
+    return data;
 }
 
 int conversion::NumericalconversionInt(const std::string_view line){//関数名とnamespace含めたら長い名前の変更は検討しよう（コードが若干読みにくい以外の実害はない）//
@@ -324,16 +380,19 @@ int conversion::NumericalconversionInt(const std::string_view line){//関数名�
 
 ThreadResult file::PareseCSVFiles(
     const std::vector<std::filesystem::path>& csvFilespath,
-    size_t begin,
-    size_t end,
-    const std::unordered_map<std::string,uint16_t>& codeMap,
-    size_t codeCount,
-    size_t chunkIndex){
+    int begin,
+    int end,
+    const std::unordered_map<std::string_view,uint16_t>& codeMap,
+    int chunkIndex){
 
     ThreadResult data;
     data.fileIndex=chunkIndex;
-
-    for(size_t i = begin; i < end; ++i){
+    data.pricedata.resize(codeMap.size());
+    int vectorsize = (end - begin)*30;
+    for(int i=0;i<codeMap.size();i++){
+        data.pricedata[i].reserve(vectorsize);
+    }
+    for(int i = begin; i < end; ++i){
         const std::filesystem::path& p = csvFilespath[i];
         std::ifstream ifs(p);
         if (!ifs) {
@@ -343,44 +402,46 @@ ThreadResult file::PareseCSVFiles(
         std::string line;
         line.reserve(256);
         std::getline(ifs, line);
-
-        std::vector<std::string_view> header = file::ListCSVparse(line);
+        std::vector<std::string_view> tmpdata;
+        file::ListCSVparse(line,tmpdata);
         std::string code;
         CSVpriceheader hederstruct;
-        for(int i = 0;i<header.size();i++){
-            if     (header[i] =="Date")      hederstruct.date=i;
-            else if(header[i]=="Code")       hederstruct.code =i;
-            else if(header[i] == "O")        hederstruct.Open = i;
-            else if(header[i] == "H")        hederstruct.High = i;
-            else if(header[i] == "L")        hederstruct.Low = i;
-            else if(header[i] == "C")        hederstruct.Close = i;
-            else if(header[i] == "Vo")       hederstruct.Vo = i;
-            else if(header[i] == "AdjFactor")hederstruct.AF = i;
+        for(int i = 0;i<tmpdata.size();i++){
+            if     (tmpdata[i] =="Date")      hederstruct.date=i;
+            else if(tmpdata[i]=="Code")       hederstruct.code =i;
+            else if(tmpdata[i] == "O")        hederstruct.Open = i;
+            else if(tmpdata[i] == "H")        hederstruct.High = i;
+            else if(tmpdata[i] == "L")        hederstruct.Low = i;
+            else if(tmpdata[i] == "C")        hederstruct.Close = i;
+            else if(tmpdata[i] == "Vo")       hederstruct.Vo = i;
+            else if(tmpdata[i] == "AdjFactor")hederstruct.AF = i;
         }
         if(hederstruct.Open == -1||hederstruct.High == -1
             ||hederstruct.Low == -1||hederstruct.Close == -1
-            ||hederstruct.UL == -1||hederstruct.LL == -1
             ||hederstruct.AF ==-1 ||hederstruct.code == -1
-            ||hederstruct.date ==-1){
-            std::cerr<<p<<"のO,H,L,C,UL,LL,AdjFactorのいずれかのヘッダー情報が抜け落ちていますCSVファイルを確認してください"<<std::endl;
+            ||hederstruct.date ==-1||hederstruct.Vo ==-1){
+            qDebug()<<p.u8string()<<"のO,H,L,C,UL,LL,AdjFactorのいずれかのヘッダー情報が抜け落ちていますCSVファイルを確認してください"<<tmpdata.size()<<line;
+            for(std::string_view s :tmpdata){
+                qDebug()<<s;
+            }
             exit(2);
         }
 
         std::string datecomparison;//日付比較用//
+        int count=-1;
 
-        std::vector<std::string_view> tmpdata;
 
-        while (std::getline(ifs, line)){
+        while (std::getline(ifs, line)){//そもそもgetline使うのをやめることを考えるべき実装が楽だから使ってはいるが
             tmpdata.clear();
-            tmpdata=file::ListCSVparse(line);
+            file::ListCSVparse(line,tmpdata);
 
             if (tmpdata.size() < CSVpriceheader::count) {//保険の破損対策発生した場合データの整合性が取れなくなるので即時終了
                 std::cerr << "CSV broken: column count mismatch at line: " << line << std::endl;
                 exit(3);
             }
 
-            std::unordered_map<std::string, uint16_t>::const_iterator it =
-                codeMap.find(std::string(tmpdata[hederstruct.code]));//毎回一時オブジェクト
+            std::unordered_map<std::string_view, uint16_t>::const_iterator it =
+                codeMap.find(tmpdata[hederstruct.code]);//毎回一時オブジェクト
 
             if (it == codeMap.end()) continue;
 
@@ -389,14 +450,13 @@ ThreadResult file::PareseCSVFiles(
                 dateStr.erase(std::remove(dateStr.begin(), dateStr.end(), '-'), dateStr.end());
                 data.timeline.push_back(std::stoi(dateStr));
                 datecomparison = tmpdata[hederstruct.date];
+                count++;
             }
 
             uint16_t id = it->second;
             if (tmpdata.size() < CSVpriceheader::count) tmpdata.resize(CSVpriceheader::count);
 
-            OHLCetc tmplinedata;
-            file::parseOHLC(tmpdata, hederstruct, tmplinedata);
-            data.pricedata[id].push_back(tmplinedata);
+            data.pricedata[id].push_back(file::parseOHLC(tmpdata, hederstruct));
         }
     }
     return data;

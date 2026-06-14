@@ -20,7 +20,9 @@ inline const std::unordered_set<int> targetMkt = {101, 102, 104, 106, 107, 111, 
 struct StockCodeID{
     char code[6];
     uint16_t id;
+    static constexpr size_t count = 11;
 }__attribute__((packed));
+
 struct CSVpriceheader {
     short Open=-1, High=-1, Low=-1, Close=-1,date = -1;
     short UL=-1, LL=-1, Vo=-1, AF=-1,code = -1,Va = -1;
@@ -28,8 +30,8 @@ struct CSVpriceheader {
     static constexpr size_t count = 11;
 };
 struct ThreadResult {
-    size_t fileIndex;
-    std::vector<std::vector<OHLCetc>> pricedata;
+    int fileIndex;
+    std::vector< std::vector<OHLCetc> > pricedata;//株式市場は30日も一月に動くわけがないので固定で確保
     std::vector<int> timeline;
 };
 #endif // STRUCT_UTIL_H
