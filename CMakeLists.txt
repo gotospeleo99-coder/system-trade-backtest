@@ -30,6 +30,8 @@ if(${QT_VERSION_MAJOR} GREATER_EQUAL 6)
         binarydb.h binarydb.cpp
         common.h
         binarydbwindow.h binarydbwindow.cpp binarydbwindow.ui
+        goldencross.h goldencross.cpp
+        fileio.h fileio.cpp
     )
 # Define target properties for Android with Qt 6 as:
 #    set_property(TARGET SystemTrade APPEND PROPERTY QT_ANDROID_PACKAGE_SOURCE_DIR

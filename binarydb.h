@@ -14,12 +14,6 @@ int ExportTickerBinary();
 int firstExportPricedataBinary();
 };
 
-namespace BinaryIO{
-    template<typename T>
-    bool SaveBinary(const std::filesystem::path& path,const std::string& filename,const std::vector<T>& data);
-    template<typename T>
-    bool LoadBinary(const std::filesystem::path& path, std::vector<T>& records);
-};
 
 
 namespace file{
